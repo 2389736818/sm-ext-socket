@@ -25,48 +25,64 @@ jobs:
       with:
         submodules: recursive
 
-    # Linux 环境准备
+    # --- Linux 环境配置 ---
     - name: Install Linux dependencies
       if: runner.os == 'Linux'
       run: |
         sudo dpkg --add-architecture i386
         sudo apt-get update
-        sudo apt-get install -y clang g++-multilib lib32z1-dev libc6-dev-i386 linux-libc-dev:i386 libboost-all-dev
+        sudo apt-get install -y clang g++-multilib lib32z1-dev libc6-dev-i386 linux-libc-dev:i386
+        
+    - name: Setup SourceMod (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        git clone --depth 1 --recursive https://github.com/alliedmodders/sourcemod ../sourcemod
 
-    # Windows 环境准备
+    - name: Setup Boost (Linux)
+      if: runner.os == 'Linux'
+      run: sudo apt-get install -y libboost-all-dev
+
+    # --- Windows 环境配置 ---
     - name: Setup MSVC environment
       if: runner.os == 'Windows'
       uses: ilammy/msvc-dev-cmd@v1
       with:
         arch: x64
 
-    # 安装 Python
+    - name: Setup SourceMod (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        git clone --depth 1 --recursive https://github.com/alliedmodders/sourcemod ..\sourcemod
+
+    # 使用预编译的 Boost (更快更可靠)
+    - name: Setup Boost (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        # 下载 Boost 1.87.0 (与您之前日志中的版本一致)
+        Invoke-WebRequest -Uri "https://github.com/userdocs/boost/releases/download/boost-1.87.0/boost_1_87_0-msvc-14.2-64.exe" -OutFile "boost.exe"
+        # 静默解压到 C:\boost
+        Start-Process -FilePath ".\boost.exe" -ArgumentList "/S", "/D=C:\boost" -Wait
+        # 设置环境变量供 AMBuild 使用
+        echo "BOOST_ROOT=C:\boost" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+    # --- 公共步骤 ---
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
-    # 安装 AMBuild
     - name: Install AMBuild
       run: python -m pip install git+https://github.com/alliedmodders/ambuild
 
-    # Windows: 使用 vcpkg 安装 Boost (更快更稳定)
-    - name: Install Boost (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        vcpkg integrate install
-        vcpkg install boost-asio:x64-windows boost-signals2:x64-windows
-
-    # 配置与构建
+    # --- 构建步骤 ---
     - name: Configure and Build
       run: |
         mkdir build && cd build
-        # 移除了 --platform=x64，并添加了 --sdks=csgo 示例 (根据您的需求调整)
-        # 如果您不需要指定 SDK，直接运行 python ../configure.py 即可
-        python ../configure.py --enable-optimize
+        # 关键修复：指定 SourceMod 源码路径
+        python ../configure.py --enable-optimize --sm-path="${{ github.workspace }}/sourcemod"
         ambuild
 
-    # 打包构建产物
+    # --- 打包上传 ---
     - name: Package artifacts
       run: |
         cd build/package
