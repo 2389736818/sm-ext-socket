@@ -25,13 +25,13 @@ jobs:
       with:
         submodules: recursive
 
-    # Linux 环境准备 (针对 Ubuntu 24.04 修复)
+    # Linux 环境准备
     - name: Install Linux dependencies
       if: runner.os == 'Linux'
       run: |
         sudo dpkg --add-architecture i386
         sudo apt-get update
-        sudo apt-get install -y clang g++-multilib lib32z1-dev libc6-dev-i386 linux-libc-dev:i386
+        sudo apt-get install -y clang g++-multilib lib32z1-dev libc6-dev-i386 linux-libc-dev:i386 libboost-all-dev
 
     # Windows 环境准备
     - name: Setup MSVC environment
@@ -46,28 +46,24 @@ jobs:
       with:
         python-version: '3.11'
 
-    # 安装 AMBuild (修正点：从 GitHub 安装)
+    # 安装 AMBuild
     - name: Install AMBuild
-      run: |
-        python -m pip install --upgrade pip setuptools wheel
-        python -m pip install git+https://github.com/alliedmodders/ambuild
+      run: python -m pip install git+https://github.com/alliedmodders/ambuild
 
-    # 安装其他依赖（如Boost，根据项目实际需求）
-    - name: Install Boost (Linux)
-      if: runner.os == 'Linux'
-      run: sudo apt-get install -y libboost-all-dev
-
+    # Windows: 使用 vcpkg 安装 Boost (更快更稳定)
     - name: Install Boost (Windows)
       if: runner.os == 'Windows'
       run: |
-        choco install boost-msvc-14.2 -y
+        vcpkg integrate install
+        vcpkg install boost-asio:x64-windows boost-signals2:x64-windows
 
     # 配置与构建
     - name: Configure and Build
       run: |
         mkdir build && cd build
-        # 注意：请根据您的 AMBuildScript 确认是否需要 --platform=x64 参数
-        python ../configure.py --enable-optimize --platform=x64
+        # 移除了 --platform=x64，并添加了 --sdks=csgo 示例 (根据您的需求调整)
+        # 如果您不需要指定 SDK，直接运行 python ../configure.py 即可
+        python ../configure.py --enable-optimize
         ambuild
 
     # 打包构建产物
