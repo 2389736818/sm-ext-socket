@@ -45,19 +45,20 @@ jobs:
       run: |
         sudo dpkg --add-architecture i386
         sudo apt-get update
-        sudo apt-get install -y clang g++-multilib lib32z1-dev libc6-dev-i386 linux-libc-dev:i386 libboost-dev
+        sudo apt-get install -y clang g++-multilib lib32z1-dev libc6-dev-i386 linux-libc-dev:i386 libboost-all-dev
         
-        # 关键修复：在 /opt/boost 构建标准的目录结构
-        # AMBuild 通常查找 $BOOST_ROOT/include/boost 和 $BOOST_ROOT/lib
-        sudo mkdir -p /opt/boost/include /opt/boost/lib
+        # 关键修复：构建 AMBuild 预期的目录结构
+        # AMBuild 通常查找 $BOOST_ROOT/boost 和 $BOOST_ROOT/lib
+        sudo mkdir -p /opt/boost
         
-        # 链接头文件：/opt/boost/include/boost -> /usr/include/boost
-        sudo ln -s /usr/include/boost /opt/boost/include/boost
+        # 1. 链接头文件：创建 /opt/boost/boost -> /usr/include/boost
+        # 这样脚本在查找 /opt/boost/boost 时就能找到头文件
+        sudo ln -s /usr/include/boost /opt/boost/boost
         
-        # 链接库文件：/opt/boost/lib -> /usr/lib/x86_64-linux-gnu
+        # 2. 链接库文件：创建 /opt/boost/lib -> /usr/lib/x86_64-linux-gnu
         sudo ln -s /usr/lib/x86_64-linux-gnu /opt/boost/lib
         
-        # 设置环境变量
+        # 3. 设置环境变量
         echo "BOOST_ROOT=/opt/boost" >> $GITHUB_ENV
 
     # --- Windows 配置 ---
@@ -70,7 +71,7 @@ jobs:
     - name: Setup Boost (Windows)
       if: runner.os == 'Windows'
       run: |
-        # 使用 Boost 官方归档的直接下载链接 (非 SourceForge 重定向)，更稳定
+        # 使用 Boost 官方归档直接下载链接，避免 SourceForge 重定向导致的文件损坏
         # 使用 1.82.0 版本，这是一个非常稳定的版本
         $url = "https://archives.boost.io/release/1.82.0/binaries/boost_1_82_0-msvc-14.2-64.exe"
         $output = "C:\boost_install.exe"
