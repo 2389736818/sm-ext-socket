@@ -25,47 +25,44 @@ jobs:
       with:
         submodules: recursive
 
-    # --- Linux 环境配置 ---
+    # --- 1. 准备依赖 (关键步骤) ---
+    
+    # 克隆 SourceMod 和 Metamod:Source 到父目录
+    # AMBuild 脚本通常会在父目录查找这些依赖
+    - name: Fetch Dependencies
+      run: |
+        git clone --depth 1 --recursive https://github.com/alliedmodders/sourcemod ../sourcemod
+        git clone --depth 1 --recursive https://github.com/alliedmodders/metamod-source ../metamod-source
+      shell: bash
+
+    # --- 2. Linux 特定配置 ---
     - name: Install Linux dependencies
       if: runner.os == 'Linux'
       run: |
         sudo dpkg --add-architecture i386
         sudo apt-get update
-        sudo apt-get install -y clang g++-multilib lib32z1-dev libc6-dev-i386 linux-libc-dev:i386
-        
-    - name: Setup SourceMod (Linux)
-      if: runner.os == 'Linux'
-      run: |
-        git clone --depth 1 --recursive https://github.com/alliedmodders/sourcemod ../sourcemod
+        sudo apt-get install -y clang g++-multilib lib32z1-dev libc6-dev-i386 linux-libc-dev:i386 libboost-all-dev
 
-    - name: Setup Boost (Linux)
-      if: runner.os == 'Linux'
-      run: sudo apt-get install -y libboost-all-dev
-
-    # --- Windows 环境配置 ---
+    # --- 3. Windows 特定配置 ---
     - name: Setup MSVC environment
       if: runner.os == 'Windows'
       uses: ilammy/msvc-dev-cmd@v1
       with:
         arch: x64
 
-    - name: Setup SourceMod (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        git clone --depth 1 --recursive https://github.com/alliedmodders/sourcemod ..\sourcemod
-
-    # 使用预编译的 Boost (更快更可靠)
+    # Windows: 快速安装 Boost (下载预编译包)
     - name: Setup Boost (Windows)
       if: runner.os == 'Windows'
       run: |
-        # 下载 Boost 1.87.0 (与您之前日志中的版本一致)
-        Invoke-WebRequest -Uri "https://github.com/userdocs/boost/releases/download/boost-1.87.0/boost_1_87_0-msvc-14.2-64.exe" -OutFile "boost.exe"
+        # 下载 Boost 1.84.0 (稳定版本，体积约 200MB)
+        Invoke-WebRequest -Uri "https://archives.boost.io/release/1.84.0/binaries/boost_1_84_0-msvc-14.2-64.exe" -OutFile "boost.exe"
         # 静默解压到 C:\boost
         Start-Process -FilePath ".\boost.exe" -ArgumentList "/S", "/D=C:\boost" -Wait
-        # 设置环境变量供 AMBuild 使用
+        # 设置环境变量
         echo "BOOST_ROOT=C:\boost" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      shell: pwsh
 
-    # --- 公共步骤 ---
+    # --- 4. 公共构建步骤 ---
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
@@ -74,15 +71,14 @@ jobs:
     - name: Install AMBuild
       run: python -m pip install git+https://github.com/alliedmodders/ambuild
 
-    # --- 构建步骤 ---
     - name: Configure and Build
       run: |
         mkdir build && cd build
-        # 关键修复：指定 SourceMod 源码路径
-        python ../configure.py --enable-optimize --sm-path="${{ github.workspace }}/sourcemod"
+        # 关键修复：明确指定 SourceMod 的路径
+        python ../configure.py --enable-optimize --sm-path="../sourcemod"
         ambuild
 
-    # --- 打包上传 ---
+    # --- 5. 打包上传 ---
     - name: Package artifacts
       run: |
         cd build/package
