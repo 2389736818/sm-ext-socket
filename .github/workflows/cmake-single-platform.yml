@@ -1,25 +1,20 @@
-# 这是一个用于构建 sm-ext-socket 扩展的 GitHub Actions 工作流。
-# 原始模板基于 CMake，已针对 AMBuild 构建系统进行重写。
 name: Build sm-ext-socket x64
 
 on:
   push:
-    branches: [ "x64", "master" ] # 监听 x64 和 master 分支的推送
+    branches: [ "x64", "master" ]
   pull_request:
-    branches: [ "x64" ]          # 监听针对 x64 分支的 PR
+    branches: [ "x64" ]
 
 env:
-  # 构建配置类型 (AMBuild 通常使用 --enable-optimize 来对应 Release)
   BUILD_TYPE: Release
 
 jobs:
   build:
     name: Build on ${{ matrix.os }}
-    # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
-    # 这里我们使用矩阵构建来同时支持 Linux 和 Windows。
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false # 即使某个平台失败，也继续构建其他平台
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         include:
@@ -33,11 +28,10 @@ jobs:
       uses: actions/checkout@v4
       with:
         submodules: recursive
-        path: extension # 将代码检出到 extension 子目录，方便管理依赖
+        path: extension
 
     # --- 依赖项准备 ---
     
-    # 1. 克隆 SourceMod 和 Metamod 源码 (AMBuild 需要这些头文件)
     - name: Fetch SourceMod Dependencies
       run: |
         cd ..
@@ -45,21 +39,28 @@ jobs:
         git clone --depth 1 --recursive https://github.com/alliedmodders/metamod-source
       shell: bash
 
-    # 2. Linux 环境配置
+    # --- Linux 配置 ---
     - name: Install Linux dependencies
       if: runner.os == 'Linux'
       run: |
         sudo dpkg --add-architecture i386
         sudo apt-get update
-        sudo apt-get install -y clang g++-multilib lib32z1-dev libc6-dev-i386 linux-libc-dev:i386 libboost-all-dev
+        sudo apt-get install -y clang g++-multilib lib32z1-dev libc6-dev-i386 linux-libc-dev:i386 libboost-dev
         
-        # 构建符合 AMBuild 预期的 Boost 目录结构
-        mkdir -p $HOME/boost
-        ln -s /usr/include/boost $HOME/boost/boost
-        ln -s /usr/lib/x86_64-linux-gnu $HOME/boost/lib
-        echo "BOOST_ROOT=$HOME/boost" >> $GITHUB_ENV
+        # 关键修复：在 /opt/boost 构建标准的目录结构
+        # AMBuild 通常查找 $BOOST_ROOT/include/boost 和 $BOOST_ROOT/lib
+        sudo mkdir -p /opt/boost/include /opt/boost/lib
+        
+        # 链接头文件：/opt/boost/include/boost -> /usr/include/boost
+        sudo ln -s /usr/include/boost /opt/boost/include/boost
+        
+        # 链接库文件：/opt/boost/lib -> /usr/lib/x86_64-linux-gnu
+        sudo ln -s /usr/lib/x86_64-linux-gnu /opt/boost/lib
+        
+        # 设置环境变量
+        echo "BOOST_ROOT=/opt/boost" >> $GITHUB_ENV
 
-    # 3. Windows 环境配置
+    # --- Windows 配置 ---
     - name: Setup MSVC environment
       if: runner.os == 'Windows'
       uses: ilammy/msvc-dev-cmd@v1
@@ -69,10 +70,26 @@ jobs:
     - name: Setup Boost (Windows)
       if: runner.os == 'Windows'
       run: |
-        # 下载 Boost 预编译包
-        Invoke-WebRequest -Uri "https://sourceforge.net/projects/boost/files/boost/1.84.0/boost_1_84_0-msvc-14.2-64.exe/download" -OutFile "boost.exe"
-        # 静默安装到 C:\boost
-        Start-Process -FilePath ".\boost.exe" -ArgumentList "/S", "/D=C:\boost" -Wait
+        # 使用 Boost 官方归档的直接下载链接 (非 SourceForge 重定向)，更稳定
+        # 使用 1.82.0 版本，这是一个非常稳定的版本
+        $url = "https://archives.boost.io/release/1.82.0/binaries/boost_1_82_0-msvc-14.2-64.exe"
+        $output = "C:\boost_install.exe"
+        
+        Write-Host "Downloading Boost from $url..."
+        # 增加超时时间，确保大文件下载完成
+        Invoke-WebRequest -Uri $url -OutFile $output -TimeoutSec 600
+        
+        # 简单校验：检查文件是否大于 100MB，防止下载了错误页面
+        $fileSize = (Get-Item $output).Length / 1MB
+        if ($fileSize -lt 100) {
+           Write-Error "下载的文件过小 ($([math]::Round($fileSize, 2)) MB)，可能已损坏。"
+           exit 1
+        }
+        
+        Write-Host "Installing Boost..."
+        # 静默安装
+        Start-Process -FilePath $output -ArgumentList "/S", "/D=C:\boost" -Wait
+        
         # 设置环境变量
         echo "BOOST_ROOT=C:\boost" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       shell: pwsh
@@ -91,12 +108,10 @@ jobs:
       run: |
         cd extension
         mkdir build && cd build
-        # 运行 AMBuild 配置脚本
         python ../configure.py --enable-optimize
-        # 执行构建
         ambuild
 
-    # --- 产物打包与上传 ---
+    # --- 产物打包 ---
     
     - name: Package artifacts
       run: |
