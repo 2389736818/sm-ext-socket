@@ -2,39 +2,41 @@ name: Build sm-ext-socket x64
 
 on:
   push:
-    branches: [ "x64", "main" ]  # 当推送至x64或main分支时触发
+    branches: [ "x64", "main" ]
   pull_request:
-    branches: [ "x64" ]          # 当有针对x64分支的PR时触发
-  workflow_dispatch:               # 允许手动触发
+    branches: [ "x64" ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest] # 同时构建Linux和Windows
+        os: [ubuntu-latest, windows-latest]
         include:
           - os: ubuntu-latest
             platform: linux
-            compiler: clang
           - os: windows-latest
             platform: windows
-            compiler: msvc
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        submodules: recursive # 如果有子模块，确保检出
+        submodules: recursive
 
-    # Linux 环境准备
+    # Linux 环境准备 (针对 Ubuntu 24.04 修复)
     - name: Install Linux dependencies
       if: runner.os == 'Linux'
       run: |
+        # 启用 i386 架构支持
+        sudo dpkg --add-architecture i386
         sudo apt-get update
-        sudo apt-get install -y clang lib32stdc++-7-dev lib32z1-dev libc6-dev-i386 linux-libc-dev:i386 g++-multilib
+        # 安装编译工具和依赖
+        # g++-multilib 会自动安装正确版本的 lib32stdc++-dev
+        sudo apt-get install -y clang g++-multilib lib32z1-dev libc6-dev-i386 linux-libc-dev:i386
 
-    # Windows 环境准备：使用 Microsoft 设置的 Developer Command Prompt
+    # Windows 环境准备
     - name: Setup MSVC environment
       if: runner.os == 'Windows'
       uses: ilammy/msvc-dev-cmd@v1
@@ -50,26 +52,26 @@ jobs:
     - name: Install AMBuild
       run: python -m pip install ambuild
 
-    # 安装其他依赖（如Boost，根据项目实际需求）
+    # 安装 Boost 依赖
     - name: Install Boost (Linux)
       if: runner.os == 'Linux'
-      run: |
-        sudo apt-get install -y libboost-all-dev
-        # 或者根据项目需要安装特定版本
+      run: sudo apt-get install -y libboost-all-dev
 
     - name: Install Boost (Windows)
       if: runner.os == 'Windows'
       run: |
-        # 可以从源码编译或使用预编译包
-        # 以下是一个示例，可能需要根据项目AMBuildScript调整
-        choco install boost-msvc-14.2 -y # 示例：使用Chocolatey安装
-        # 或手动下载并设置环境变量
+        # 使用 Chocolatey 安装 Boost
+        choco install boost-msvc-14.2 -y
+        # 注意：安装后可能需要设置 BOOST_ROOT 环境变量，具体取决于您的 AMBuildScript 配置
+        # 例如: echo "BOOST_ROOT=C:\local\boost_1_72_0" >> $GITHUB_ENV
 
     # 配置与构建
     - name: Configure and Build
       run: |
         mkdir build && cd build
-        # 根据项目AMBuildScript调整配置参数
+        # 注意：请检查您的 configure.py 是否支持 --platform=x64 参数。
+        # 标准 SourceMod 扩展通常使用 --archs=x64 或自动检测。
+        # 如果构建失败，请尝试去掉 --platform=x64 或改为 --archs=x64
         python ../configure.py --enable-optimize --platform=x64
         ambuild
 
