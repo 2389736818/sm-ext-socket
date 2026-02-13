@@ -29,47 +29,44 @@ jobs:
     - name: Install Linux dependencies
       if: runner.os == 'Linux'
       run: |
-        # 启用 i386 架构支持
         sudo dpkg --add-architecture i386
         sudo apt-get update
-        # g++-multilib 会自动安装正确版本的 lib32stdc++-dev
         sudo apt-get install -y clang g++-multilib lib32z1-dev libc6-dev-i386 linux-libc-dev:i386
 
-    # Windows 环境准备：使用 Microsoft 设置的 Developer Command Prompt
+    # Windows 环境准备
     - name: Setup MSVC environment
       if: runner.os == 'Windows'
       uses: ilammy/msvc-dev-cmd@v1
       with:
         arch: x64
 
-    # 安装 Python 和 AMBuild
+    # 安装 Python
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
-    - name: Setup AMBuild
+    # 安装 AMBuild (修正点：从 GitHub 安装)
+    - name: Install AMBuild
       run: |
         python -m pip install --upgrade pip setuptools wheel
-        pip install git+https://github.com/alliedmodders/ambuild
+        python -m pip install git+https://github.com/alliedmodders/ambuild
 
     # 安装其他依赖（如Boost，根据项目实际需求）
     - name: Install Boost (Linux)
       if: runner.os == 'Linux'
-      run: |
-        sudo apt-get install -y libboost-all-dev
+      run: sudo apt-get install -y libboost-all-dev
 
     - name: Install Boost (Windows)
       if: runner.os == 'Windows'
       run: |
         choco install boost-msvc-14.2 -y
-        # 如果需要 BOOST_ROOT 环境变量，可以在这里设置：
-        # echo "BOOST_ROOT=C:\local\boost_1_72_0" >> $GITHUB_ENV
 
     # 配置与构建
     - name: Configure and Build
       run: |
         mkdir build && cd build
+        # 注意：请根据您的 AMBuildScript 确认是否需要 --platform=x64 参数
         python ../configure.py --enable-optimize --platform=x64
         ambuild
 
